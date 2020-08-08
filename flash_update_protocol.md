@@ -5,23 +5,33 @@ based on fw110e.json
 
 ## Comms setup
 
-The radio is expected to be booted in Firmware Programming Mode with *ON + PTT + 1*
+The radio is expected to be booted in *Firmware Programming Mode* with *ON + PTT + 1*
 
 There's a magic sequence for unlocking command mode:
 
+fw110e.json
 ```
 [00253] OUT: 62 6f 54 68 64 37 34 74 77 12 1d  ["boThd74tw\x12"]
 [00255]  IN: 16
 [00257]  IN: 06
 ```
-With this magic, the resulting xor key for command obfuscation is 0x69.
+After this magic, the xor key used for command obfuscation is 0x69.
 
+fw109e.json
 ```
 [000f3] OUT: 67 64 54 68 64 37 34 74 77 10 01  ["gdThd74tw\x10"]
 [000f5]  IN: 16
 [000f7]  IN: 06
 ```
-With this magic, the resulting xor key for command obfuscation is 0x57.
+After this magic, the xor key used for command obfuscation is 0x57.
+
+fw103e.json
+```
+[000e3] OUT: 6b 70 54 68 64 37 34 74 77 0b 30  ["kpThd74tw\x0b"]
+[000e5]  IN: 16
+[000e7]  IN: 06
+```
+After this magic, the xor key used for command obfuscation is 0x7d.
 
 ## Command format and on-wire obfuscation
 ```
