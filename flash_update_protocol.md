@@ -7,7 +7,7 @@ based on fw110e.json
 
 The radio is expected to be booted in Firmware Programming Mode with *ON + PTT + 1*
 
-There's a magic sequence for unlocking the command mode:
+There's a magic sequence for unlocking command mode:
 
 ```
 [00253] OUT: 62 6f 54 68 64 37 34 74 77 12 1d  ["boThd74tw\x12"]
