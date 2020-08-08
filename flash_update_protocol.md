@@ -16,16 +16,34 @@ There's a magic sequence for unlocking the command mode:
 
 ## Command format and on-wire obfuscation
 ```
-0xab 0xab [2 byte length] [4 byte verb] [optional nouns] [1 byte checksum]
+0xab 0xab [2 byte length] [2 byte payload length] [2 byte verb] [optional nouns] [optional payload] [1 byte checksum]
 ```
 
-The length is the number of bytes after the verb including the checksum, but strangely minus the data payload of the `0x43` command.
+The initial length field is the number of bytes in the nouns plus the checksum, but minus the payload.
 
 Commands are obfuscated on the wire. You will see two random identical attention bytes at the beginning of each command packet. Since you know they ought to be `0xab 0xab`, just *xor* the first byte with *0xab* and xor the result with the whole command packet to get the cleartext.
 
 The *xor* byte is not negotiated anywhere. The hypothesis is that the flasher chooses a random byte and the programmer in the device uses the logic above to determine it. Consequently, when we write our custom flasher, we should be able to simply transmit in the clear as that is equivalent to "randomly" choosing 0 as *xor* byte.
 
-# Flashing setup
+### Observed command verbs
+ * [OUT] `0x30`
+ * [IN] `0x11` – BUSY
+ * [IN] `0x06` – OK
+ * [OUT] `0xa0`
+ * [OUT] `0x31`
+ * [IN] `0x32`
+ * [OUT] `0x33`
+
+ * [OUT] `0x40` – Section setup
+ * [IN] `0x41` – Answer to section setup
+ * [OUT] `0x42` – Command before data transfer
+ * [OUT] `0x43` [4 byte offset] [2 byte payload length] [00 00] [payload] [cs] – Data packet
+ * [OUT] `0x45` – Section end
+ * [IN] `0x46` – Answer to section end
+
+ * [OUT] `0x50` – Last command to the radio
+
+## Flashing setup
 ```
 [00267] OUT: ab ab 00 02 00 00 00 30 00 32
 [00269]  IN: ab ab 00 01 00 00 00 06 07  [OK]
