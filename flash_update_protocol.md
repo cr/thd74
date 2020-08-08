@@ -44,6 +44,12 @@ Commands are obfuscated on the wire. You will see two random identical attention
 
 The *xor* byte may be negotiated in the initial magic sequence, but it well may be not. A hypothesis to test is whether the flasher chooses a random byte and the programmer in the device uses the logic above to determine it instead of deriving it from the magic sequence. Consequently, when we write our custom flasher, we may be able to simply transmit in the clear as that is equivalent to "randomly" choosing 0 as *xor* byte.
 
+However, the last two bytes of the magic value and the *xor* key are interrelated. If *y* and *z* are the last two bytes of the magic value, then the *xor* key *k* can be calculated as
+
+```python
+k = (((y + z + 72) & 120) - ((y + z) & 7)) % 128
+```
+
 ### Observed command verbs
  * [OUT] `0x30`
  * [IN] `0x11` – BUSY
