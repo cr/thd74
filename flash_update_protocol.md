@@ -8,11 +8,20 @@ based on fw110e.json
 The radio is expected to be booted in Firmware Programming Mode with *ON + PTT + 1*
 
 There's a magic sequence for unlocking the command mode:
+
 ```
-[00253] OUT: 62 6f 54 68 64 37 34 74 77 12 1d  ["boThd74tw"]
+[00253] OUT: 62 6f 54 68 64 37 34 74 77 12 1d  ["boThd74tw\x12"]
 [00255]  IN: 16
 [00257]  IN: 06
 ```
+With this magic, the resulting xor key for command obfuscation is 0x69.
+
+```
+[000f3] OUT: 67 64 54 68 64 37 34 74 77 10 01  ["gdThd74tw\x10"]
+[000f5]  IN: 16
+[000f7]  IN: 06
+```
+With this magic, the resulting xor key for command obfuscation is 0x57.
 
 ## Command format and on-wire obfuscation
 ```
@@ -23,7 +32,7 @@ The initial length field is the number of bytes in the nouns plus the checksum, 
 
 Commands are obfuscated on the wire. You will see two random identical attention bytes at the beginning of each command packet. Since you know they ought to be `0xab 0xab`, just *xor* the first byte with *0xab* and xor the result with the whole command packet to get the cleartext.
 
-The *xor* byte is not negotiated anywhere. The hypothesis is that the flasher chooses a random byte and the programmer in the device uses the logic above to determine it. Consequently, when we write our custom flasher, we should be able to simply transmit in the clear as that is equivalent to "randomly" choosing 0 as *xor* byte.
+The *xor* byte may be negotiated in the initial magic sequence, but it well may be not. A hypothesis to test is whether the flasher chooses a random byte and the programmer in the device uses the logic above to determine it instead of deriving it from the magic sequence. Consequently, when we write our custom flasher, we may be able to simply transmit in the clear as that is equivalent to "randomly" choosing 0 as *xor* byte.
 
 ### Observed command verbs
  * [OUT] `0x30`
