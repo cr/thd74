@@ -11,7 +11,7 @@ There's a magic sequence for unlocking command mode:
 
 fw110e.json
 ```
-[00253] OUT: 62 6f 54 68 64 37 34 74 77 12 1d  ["boThd74tw\x12"]
+[00253] OUT: 62 6f 54 68 64 37 34 74 77 12 1d  ["boThd74tw\x12\x1d"]
 [00255]  IN: 16
 [00257]  IN: 06
 ```
@@ -19,7 +19,7 @@ After this magic, the xor key used for command obfuscation is 0x69.
 
 fw109e.json
 ```
-[000f3] OUT: 67 64 54 68 64 37 34 74 77 10 01  ["gdThd74tw\x10"]
+[000f3] OUT: 67 64 54 68 64 37 34 74 77 10 01  ["gdThd74tw\x10\x01"]
 [000f5]  IN: 16
 [000f7]  IN: 06
 ```
@@ -27,7 +27,7 @@ After this magic, the xor key used for command obfuscation is 0x57.
 
 fw103e.json
 ```
-[000e3] OUT: 6b 70 54 68 64 37 34 74 77 0b 30  ["kpThd74tw\x0b"]
+[000e3] OUT: 6b 70 54 68 64 37 34 74 77 0b 30  ["kpThd74tw\x0b\x30"]
 [000e5]  IN: 16
 [000e7]  IN: 06
 ```
