@@ -38,10 +38,10 @@ class ExtractCommand(CliCommand):
     def run(self) -> int:
         try:
             with open(self.args.exe, "rb") as f:
-                logger.info(f"Reading updater from `{str(self.args.exe.absolute)}`")
+                logger.info(f"Reading updater from `{str(self.args.exe.absolute())}`")
                 exe = f.read()
         except FileNotFoundError:
-            logger.critical(f"Unable to open {str(self.args.exe.absolute)}")
+            logger.critical(f"Unable to open {str(self.args.exe.absolute())}")
             return 10
 
         logger.info("Parsing updater blobs")
@@ -53,7 +53,7 @@ class ExtractCommand(CliCommand):
             if section is None:
                 logger.warning(f"Unknown blob [{n}]")
             else:
-                logger.info(f"Detected firmware section [{n}], looks like `{section['name']}` with permutation offet {section['permute_offset']}")
+                logger.info(f"Detected firmware section [{n}], looks like `{section['name']}` at permutation offet {section['permute_offset']}")
                 section["size"] = count_blob_bytes(blob)
 
         if self.args.path is None:
@@ -81,7 +81,7 @@ class ExtractCommand(CliCommand):
                 logger.warning(f"Unable to export unknown section [{n}], skipping")
                 continue
             file_name = self.args.path.absolute() / f"{s['name']}.srec"
-            logger.info(f"Exporting section [{n}] to `{file_name}`")
+            logger.info(f"Decrypting section [{n}] to `{file_name}`")
             with open(file_name, "w") as f:
                 for rec in make(32, parse_blob(decrypt_blob(blobs[n], s["permute_offset"], s["end_offset"]),
                                                s["memory_address"]), s["name"]):
