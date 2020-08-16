@@ -121,13 +121,13 @@ def get_flash_blobs(data: Iterable[str]) -> Iterable[List[str]]:
             blob.append(line)
 
 
-# def get_data_lines(data: Iterable[str], as_bytes = False) -> Iterable[List[str]]:
-#     for line in data:
-#         if not line.startswith("$") and len(line) != 15 and len(line) != 11:
-#             if not as_bytes:
-#                 yield line
-#             else:
-#                 yield unhexlify(line)
+def get_data_lines(data: Iterable[str], as_bytes = False) -> Iterable[List[str]]:
+    for line in data:
+        if not line.startswith("$") and len(line) != 15 and len(line) != 11:
+            if not as_bytes:
+                yield line
+            else:
+                yield unhexlify(line)
 
 
 def identify_blob(blob: List[str], blob_number) -> dict or None:
