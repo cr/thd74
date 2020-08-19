@@ -1,0 +1,10 @@
+*.pyc
+.idea
+.vscode
+*.egg-info
+venv
+Pipfile
+Pipfile.lock
+.coverage
+htmlcov
+.DS_Store
