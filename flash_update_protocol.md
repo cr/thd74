@@ -5,50 +5,66 @@ based on fw110e.json
 
 ## Comms setup
 
-The radio is expected to be booted in *Firmware Programming Mode* with *ON + PTT + 1*
+The radio is expected to be booted in *Firmware Programming Mode* with *ON + PTT + 1* The first magic sequence of bytes sent to the device determines its operating mode: encrypted or cleartext.
 
-There's a magic sequence for unlocking command mode:
+## Encrypted firmware programming mode
 
-fw110e.json
+Kenwood's updater software uses *encrypted firmware programming mode* by default. All data except the newline sequence `\r\n` is obfuscated on the wire by *xor* with a constant byte value.
+
+When dumping data from a USB update capture, the *xor* byte can be trivially derived from looking at the first two bytes of each message: You will find two identical bytes there, but we already know that their cleartext is `0xab 0xab`, so just *xor* the first byte with *0xab* and *xor* the result with the rest to get the cleartext message.
+
+The *xor* byte is negotiated in the initial magic sequence, but the exact mechnanism is not fully understood at the moment. However, we already know that last two bytes of the magic sequence and the *xor* key are interrelated. If *y* and *z* are the last two bytes of the magic sequence, then the *xor* key *k* can be calculated as
+
+```python
+k = (((y + z + 72) & 120) - ((y + z) & 7)) % 128
+```
+
+Here are a few sample magic sequences for unlocking encrypted firmware programming mode:
+
 ```
 [00253] OUT: 62 6f 54 68 64 37 34 74 77 12 1d  ["boThd74tw\x12\x1d"]
 [00255]  IN: 16
 [00257]  IN: 06
 ```
-After this magic, the xor key used for command obfuscation is 0x69.
+After this magic, the xor key used for command obfuscation is `0x69`.
 
-fw109e.json
 ```
 [000f3] OUT: 67 64 54 68 64 37 34 74 77 10 01  ["gdThd74tw\x10\x01"]
 [000f5]  IN: 16
 [000f7]  IN: 06
 ```
-After this magic, the xor key used for command obfuscation is 0x57.
+After this magic, the xor key used for command obfuscation is `0x57`.
 
-fw103e.json
 ```
 [000e3] OUT: 6b 70 54 68 64 37 34 74 77 0b 30  ["kpThd74tw\x0b\x30"]
 [000e5]  IN: 16
 [000e7]  IN: 06
 ```
-After this magic, the xor key used for command obfuscation is 0x7d.
+After this magic, the xor key used for command obfuscation is `0x7d`.
 
-## Command format and on-wire obfuscation
+
+## Cleartext firmware programming mode
+
+The device supports an undocumented *cleartext firmware programming mode* that is initiated by the `FPROMOD` magic sequence.
+
 ```
-0xab 0xab [2 byte length] [2 byte payload length] [2 byte verb] [optional nouns] [optional payload] [1 byte checksum]
+[00] OUT: 46 50 52 4f 4d 4f 44  ["FPROMOD"]
+[01]  IN: 16
+[02]  IN: 06
 ```
 
-The initial length field is the number of bytes in the nouns plus the checksum, but minus the payload.
+This mode is equivalent to *encrypted firmware programming mode* with *xor* byte 0.
 
-Commands are obfuscated on the wire. You will see two random identical attention bytes at the beginning of each command packet. Since you know they ought to be `0xab 0xab`, just *xor* the first byte with *0xab* and xor the result with the whole command packet to get the cleartext.
 
-The *xor* byte may be negotiated in the initial magic sequence, but it well may be not. A hypothesis to test is whether the flasher chooses a random byte and the programmer in the device uses the logic above to determine it instead of deriving it from the magic sequence. Consequently, when we write our custom flasher, we may be able to simply transmit in the clear as that is equivalent to "randomly" choosing 0 as *xor* byte.
+## Firmware programming command format
 
-However, the last two bytes of the magic value and the *xor* key are interrelated. If *y* and *z* are the last two bytes of the magic value, then the *xor* key *k* can be calculated as
-
-```python
-k = (((y + z + 72) & 120) - ((y + z) & 7)) % 128
 ```
+0xab 0xab [2 byte cmd length] [2 byte payload length] [2 byte verb] [optional nouns] [optional payload] [1 byte checksum] \r\n
+```
+
+The initial cmd length field is the number of bytes in the nouns plus one byte for the checksum. The overall message length is `2 + <cmd length> + <payload length>`.
+
+The checksum is the sum reduce over all preceeding bytes in the message apart from the attention bytes `ab ab`.
 
 ### Observed command verbs
  * [OUT] `0x30`
@@ -66,7 +82,7 @@ k = (((y + z + 72) & 120) - ((y + z) & 7)) % 128
  * [OUT] `0x45` – Section end
  * [IN] `0x46` – Answer to section end
 
- * [OUT] `0x50` – Last command to the radio
+ * [OUT] `0x50` – Last command, radio displays "Completed!!" and becomes unresponsive
 
 ## Flashing setup
 ```
@@ -83,7 +99,7 @@ k = (((y + z + 72) & 120) - ((y + z) & 7)) % 128
 
 ## Firmware section
 
-The section header carries memory address and an ID to check for in memory at an offset:
+The section header carries memory address and a byte sequence to check for in memory at an offset:
 ```
 [00277] OUT: ab ab 00 44 00 00 00 40 00 00 20 60 00 00 28 00
              00 00 28 00 00 00 00 00 00 00 00 00 00 00 00 0f
@@ -99,7 +115,23 @@ The section header carries memory address and an ID to check for in memory at an
 [002d1]  IN: ab ab 00 01 00 00 00 06 07  [OK]
 ```
 
-Then come the data packets, 0x400 byte payload each. First nouns carry offset and payload length:
+The initial section header command verb `40` has the following nouns:
+ * `00 00 20 60` – memory address 0x200000 + 0x60000000
+ * `00 00 28 00` – section length to write 0x280000
+ * `00 00 28 00` – section length to receive 0x280000
+ * `00 00 00 00` – unknown always 0
+ * `00 00 00 00` – unknown always 0
+ * `00 00 00 0f` – unknown always 0x0f000000
+ * `06 00 00 00` – unknown
+ * `ab 66 03 1f` – unknown
+ * `00 00 00 00` – unknown always 0
+ * `00 00 28 00` – section length 0x280000
+ * `0a 00 00 00` – unknown always 0x0a
+ * `a0 00 00 00` – sequence offset in section 0xa0
+ * `0f 00 00 00` – length of sequence
+ * `56 31 2e 31 30 2e 30 30 30 20 20 20 20 20 20` – sequence to compare "V1.10.000      "
+
+Then come the data command verbs `43`, with 0x400 byte payload each. Two nouns carry offset and payload length:
 ```
 [002eb] OUT: ab ab 00 09 04 00 00 43 00 00 00 00 00 04 00 00
              1c f0 9f e5 1c f0 9f e5 1c f0 9f e5 1c f0 9f e5
@@ -154,6 +186,21 @@ Then come the data packets, 0x400 byte payload each. First nouns carry offset an
 [01b19]  IN: ab ab 00 02 00 00 00 46 00 48
 ```
 
+ * `00 00 60 60` – memory address 0x600000 + 0x60000000
+ * `00 80 05 00` – section length to write 0x58000
+ * `00 00 06 00` – section length to receive 0x60000
+ * `00 00 00 00` – unknown always 0
+ * `00 00 00 00` – unknown always 0
+ * `00 00 00 0f` – unknown always 0x0f000000
+ * `01 00 00 00` – unknown
+ * `c4 0f c4 0f` – unknown
+ * `00 00 00 00` – unknown always 0
+ * `00 00 06 00` – section length 0x60000
+ * `0a 00 00 00` – unknown always 0x0a
+ * `00 00 00 00` – sequence offset in section 0
+ * `0a 00 00 00` – sequence length10
+ * `31 2e 30 30 2e 30 31 2e 30 30 76` – sequence to compare "1.00.01.00"
+
 ## Section 3
 ```
 [01b1b] OUT: ab ab 00 41 00 00 00 40 00 00 e0 60 00 00 10 00
@@ -179,6 +226,21 @@ Then come the data packets, 0x400 byte payload each. First nouns carry offset an
 [023d5] OUT: ab ab 00 01 00 00 00 45 46
 [023dd]  IN: ab ab 00 02 00 00 00 46 00 48
 ```
+
+ * `00 00 e0 60` – section address 0xe00000 + 0x60000000
+ * `00 00 10 00` – section length in memory 0x100000
+ * `00 00 10 00` – section length to receive 0x100000
+ * `00 00 00 00` – unknown always 0
+ * `00 00 00 00` – unknown always 0
+ * `00 00 00 0f` – unknown always 0x0f000000
+ * `03 00 00 00` – unknown
+ * `5e 40 5e 40` – unknown
+ * `00 00 00 00` – unknown always 0
+ * `00 00 10 00` – senction length 0x100000
+ * `0a 00 00 00` – unknown always 0xa
+ * `f0 ff 05 00` – offset for sequence 0x5fff0
+ * `0c 00 00 00` – length of sequence 12
+ * `44 73 31 2e 30 37 2e 30 30 52 30 30 06` – "Ds1.07.00R00"
 
 ## Section 4
 ```
@@ -232,6 +294,21 @@ Then come the data packets, 0x400 byte payload each. First nouns carry offset an
 [03b0b]  IN: ab ab 00 02 00 00 00 46 00 48
 ```
 
+ * `00 00 50 61` – address 0x01500000 + 0x60000000
+ * `00 80 0b 00` – write size 0xb8000
+ * `00 00 0c 00` – data size 0xc0000
+ * `00 00 00 00` – unknown alsways 0
+ * `00 00 00 00` – unknown always 0
+ * `00 00 00 0f` – unknown always 0xf000000
+ * `02 00 00 00` – unknown
+ * `62 af 62 af` – unknown
+ * `00 00 00 00` – unknown always 0
+ * `00 00 0c 00` – section length 0xc0000
+ * `0a 00 00 00` – unknown always 0xa
+ * `10 00 00 00` – sequence offset in section 0x10
+ * `04 00 00 00` – sequence length 4
+ * `31 2e 30 30 dd` – sequence for comparison "1.00"
+
 ## Flash finished
 
 The final packets in the protocol wrap up the flashing process:
@@ -255,3 +332,36 @@ The final packets in the protocol wrap up the flashing process:
 [03bb3] OUT: ab ab 00 03 00 00 00 50 cd b6 d6
 [03bb5]  IN: ab ab 00 01 00 00 00 06 07  [OK]
 ```
+
+ * `62 00 20 60`
+ * `02 00 00 00`
+ * `00 00 00 00`
+ * `00 00 00 00`
+ * `00 00 00 00`
+ * `00 00 00 0f`
+ * `00 00 00 00`
+ * `ce 36 ce 36`
+ * `00 00 00 00`
+ * `00 00 00 00`
+ * `0a 00 00 00`
+ * `00 00 00 00`
+ * `00 00 00 00`
+
+ * `40 00 20 60`
+ * `20 00 00 00`
+ * `00 00 00 00`
+ * `00 00 00 00`
+ * `00 00 00 00`
+ * `00 00 00 0f`
+ * `00 00 00 00`
+ * `a8 c7 a8 c7`
+ * `00 00 00 00`
+ * `00 00 00 00`
+ * `0a 00 00 00`
+ * `00 00 00 00`
+ * `00 00 00 00`
+
+ * `00 00 00 00`
+ * `20 00 00 00`
+ * `5a 5a 7a 6f 2e 2e 28 2d 5f 2d 20 29 20 45 58 2d`
+ * `34 34 32 30 20 32 30 31 33 2d 30 34 2d 30 31 00` – "ZZzo..(-_- ) EX-4420 2013-04-01\x00"

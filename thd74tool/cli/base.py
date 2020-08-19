@@ -79,7 +79,7 @@ def run(args) -> int:
     all_commands = list_commands()
 
     if args.command is None:
-        args.command = "info"
+        args.command = "devices"
 
     try:
         current_command = all_commands[args.command](args)

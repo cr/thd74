@@ -2,8 +2,9 @@
 
 from .base import run, list_commands
 
+from . import devices
 from . import extract
 
 __all__ = [
-    "extract"
+    "devices", "extract"
 ]
