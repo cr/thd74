@@ -62,12 +62,12 @@ This mode is equivalent to *encrypted firmware programming mode* with *xor* byte
 0xab 0xab [2 byte cmd length] [2 byte payload length] [2 byte verb] [optional nouns] [optional payload] [1 byte checksum] \r\n
 ```
 
-The initial cmd length field is the number of bytes in the nouns plus one byte for the checksum. The overall message length is `2 + <cmd length> + <payload length>`.
+The initial cmd length field is the number of bytes in the nouns plus one byte for the checksum. The overall message length is `<cmd length> + <payload length> + 8`.
 
 The checksum is the sum reduce over all preceeding bytes in the message apart from the attention bytes `ab ab`.
 
 ### Observed command verbs
- * [OUT] `0x30`
+ * [OUT] `0x30` – Radio starts flashing "PROGRAM"
  * [IN] `0x11` – BUSY
  * [IN] `0x06` – OK
  * [OUT] `0xa0`
@@ -101,11 +101,22 @@ The checksum is the sum reduce over all preceeding bytes in the message apart fr
 
 The section header carries memory address and a byte sequence to check for in memory at an offset:
 ```
-[00277] OUT: ab ab 00 44 00 00 00 40 00 00 20 60 00 00 28 00
-             00 00 28 00 00 00 00 00 00 00 00 00 00 00 00 0f
-             06 00 00 00 ab 66 03 1f 00 00 00 00 00 00 28 00
-             0a 00 00 00 a0 00 00 00 0f 00 00 00 56 31 2e 31   ["V1.10.000      "]
-             30 2e 30 30 30 20 20 20 20 20 20 11
+[00277] OUT: ab ab 00 44 00 00 00 40
+             00 00 20 60 – memory address 0x200000 + 0x60000000
+             00 00 28 00 – section length to write 0x280000
+             00 00 28 00 – section length to receive 0x280000
+             00 00 00 00 – unknown always 0
+             00 00 00 00 – unknown always 0
+             00 00 00 0f – unknown always 0x0f000000
+             06 00 00 00 – unknown
+             ab 66 03 1f – unknown
+             00 00 00 00 – unknown always 0
+             00 00 28 00 – section length 0x280000
+             0a 00 00 00 – unknown always 0x0a
+             a0 00 00 00 – sequence offset in section 0xa0
+             0f 00 00 00 – length of sequence
+             56 31 2e 31 30 2e 30 30 30 20 20 20 20 20 20 – sequence to compare "V1.10.000      "
+             11
 [0027b]  IN: ab ab 00 02 00 00 00 41 01 44
 [0027d] OUT: ab ab 00 01 00 00 00 42 43
 [00291]  IN: ab ab 00 01 00 00 00 11 12  [BUSY]
@@ -115,25 +126,11 @@ The section header carries memory address and a byte sequence to check for in me
 [002d1]  IN: ab ab 00 01 00 00 00 06 07  [OK]
 ```
 
-The initial section header command verb `40` has the following nouns:
- * `00 00 20 60` – memory address 0x200000 + 0x60000000
- * `00 00 28 00` – section length to write 0x280000
- * `00 00 28 00` – section length to receive 0x280000
- * `00 00 00 00` – unknown always 0
- * `00 00 00 00` – unknown always 0
- * `00 00 00 0f` – unknown always 0x0f000000
- * `06 00 00 00` – unknown
- * `ab 66 03 1f` – unknown
- * `00 00 00 00` – unknown always 0
- * `00 00 28 00` – section length 0x280000
- * `0a 00 00 00` – unknown always 0x0a
- * `a0 00 00 00` – sequence offset in section 0xa0
- * `0f 00 00 00` – length of sequence
- * `56 31 2e 31 30 2e 30 30 30 20 20 20 20 20 20` – sequence to compare "V1.10.000      "
-
 Then come the data command verbs `43`, with 0x400 byte payload each. Two nouns carry offset and payload length:
 ```
-[002eb] OUT: ab ab 00 09 04 00 00 43 00 00 00 00 00 04 00 00
+[002eb] OUT: ab ab 00 09 04 00 00 43
+             00 00 00 00 – offset in segment 0
+             00 04 00 00 – data packet size 0x400
              1c f0 9f e5 1c f0 9f e5 1c f0 9f e5 1c f0 9f e5
              1c f0 9f e5 00 00 00 00 18 f0 9f e5 18 f0 9f e5
              ff ff ff 00 74 39 15 c0 ac 3b 15 c0 68 5a 09 c0
@@ -143,14 +140,18 @@ Then come the data command verbs `43`, with 0x400 byte payload each. Two nouns c
              6e 00 00 00 00 00 00 00 96 7b 91 cc 90 dd 92 e8
              00 00 00 00 00 00 00 00 00 00 00 00 52 58 00 00
              76
-[002ed] OUT: ab ab 00 09 04 00 00 43 00 04 00 00 00 04 00 00
+[002ed] OUT: ab ab 00 09 04 00 00 43
+             00 04 00 00 – offset in section 0x400
+             00 04 00 00 – data packet size 0x400
              00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00
              8e f3 90 4d 00 00 00 00 00 00 00 00 00 00 00 00
              [...]
              00 00 00 00 44 69 67 69 74 61 6c 20 53 71 75 65
              6c 63 68 00 00 00 00 00 c3 de bc de c0 d9 bd b9
              59
-[002ef] OUT: ab ab 00 09 04 00 00 43 00 08 00 00 00 04 00 00
+[002ef] OUT: ab ab 00 09 04 00 00 43
+             00 08 00 00 – offset in segment 0x800
+             00 04 00 00 – data packet size 0x400
              d9 c1 00 00 00 00 00 00 00 00 00 00 47 50 53 20  ["GPS Data TX"]
              44 61 74 61 20 54 58 00 00 00 00 00 00 00 00 00
              [...]
@@ -164,11 +165,22 @@ Then come the data command verbs `43`, with 0x400 byte payload each. Two nouns c
 
 ## Section 2
 ```
-[017d5] OUT: ab ab 00 3f 00 00 00 40 00 00 60 60 00 80 05 00
-             00 00 06 00 00 00 00 00 00 00 00 00 00 00 00 0f
-             01 00 00 00 c4 0f c4 0f 00 00 00 00 00 00 06 00
-             0a 00 00 00 00 00 00 00 0a 00 00 00 31 2e 30 30  ["1.00.01.00"]
-             2e 30 31 2e 30 30 76
+[017d5] OUT: ab ab 00 3f 00 00 00 40
+             00 00 60 60 – memory address 0x600000 + 0x60000000
+             00 80 05 00 – section length to write 0x58000
+             00 00 06 00 – section length to receive 0x60000
+             00 00 00 00 – unknown always 0
+             00 00 00 00 – unknown always 0
+             00 00 00 0f – unknown always 0x0f000000
+             01 00 00 00 – unknown
+             c4 0f c4 0f – unknown
+             00 00 00 00 – unknown always 0
+             00 00 06 00 – section length 0x60000
+             0a 00 00 00 – unknown always 0x0a
+             00 00 00 00 – sequence offset in section 0
+             0a 00 00 00 – sequence length 10
+             31 2e 30 30 2e 30 31 2e 30 30 – sequence to compare "1.00.01.00"
+             76
 [017d7]  IN: ab ab 00 02 00 00 00 41 00 43
 [017d9] OUT: ab ab 00 01 00 00 00 42 43
 [017e3]  IN: ab ab 00 01 00 00 00 06 07  [OK]
@@ -186,28 +198,24 @@ Then come the data command verbs `43`, with 0x400 byte payload each. Two nouns c
 [01b19]  IN: ab ab 00 02 00 00 00 46 00 48
 ```
 
- * `00 00 60 60` – memory address 0x600000 + 0x60000000
- * `00 80 05 00` – section length to write 0x58000
- * `00 00 06 00` – section length to receive 0x60000
- * `00 00 00 00` – unknown always 0
- * `00 00 00 00` – unknown always 0
- * `00 00 00 0f` – unknown always 0x0f000000
- * `01 00 00 00` – unknown
- * `c4 0f c4 0f` – unknown
- * `00 00 00 00` – unknown always 0
- * `00 00 06 00` – section length 0x60000
- * `0a 00 00 00` – unknown always 0x0a
- * `00 00 00 00` – sequence offset in section 0
- * `0a 00 00 00` – sequence length10
- * `31 2e 30 30 2e 30 31 2e 30 30 76` – sequence to compare "1.00.01.00"
-
 ## Section 3
 ```
-[01b1b] OUT: ab ab 00 41 00 00 00 40 00 00 e0 60 00 00 10 00
-             00 00 10 00 00 00 00 00 00 00 00 00 00 00 00 0f
-             03 00 00 00 5e 40 5e 40 00 00 00 00 00 00 10 00
-             0a 00 00 00 f0 ff 05 00 0c 00 00 00 44 73 31 2e  ["Ds1.07.00R00"]
-             30 37 2e 30 30 52 30 30 06
+[01b1b] OUT: ab ab 00 41 00 00 00 40
+             00 00 e0 60 – section address 0xe00000 + 0x60000000
+             00 00 10 00 – section length in memory 0x100000
+             00 00 10 00 – section length to receive 0x100000
+             00 00 00 00 – unknown always 0
+             00 00 00 00 – unknown always 0
+             00 00 00 0f – unknown always 0x0f000000
+             03 00 00 00 – unknown
+             5e 40 5e 40 – unknown
+             00 00 00 00 – unknown always 0
+             00 00 10 00 – section length 0x100000
+             0a 00 00 00 – unknown always 0xa
+             f0 ff 05 00 – offset for sequence 0x5fff0
+             0c 00 00 00 – length of sequence 12
+             44 73 31 2e 30 37 2e 30 30 52 30 30 – "Ds1.07.00R00"
+             06
 [01b23]  IN: ab ab 00 02 00 00 00 41 00 43
 [01b25] OUT: ab ab 00 01 00 00 00 42 43
 [01b3f]  IN: ab ab 00 01 00 00 00 11 12  [BUSY]
@@ -227,27 +235,23 @@ Then come the data command verbs `43`, with 0x400 byte payload each. Two nouns c
 [023dd]  IN: ab ab 00 02 00 00 00 46 00 48
 ```
 
- * `00 00 e0 60` – section address 0xe00000 + 0x60000000
- * `00 00 10 00` – section length in memory 0x100000
- * `00 00 10 00` – section length to receive 0x100000
- * `00 00 00 00` – unknown always 0
- * `00 00 00 00` – unknown always 0
- * `00 00 00 0f` – unknown always 0x0f000000
- * `03 00 00 00` – unknown
- * `5e 40 5e 40` – unknown
- * `00 00 00 00` – unknown always 0
- * `00 00 10 00` – senction length 0x100000
- * `0a 00 00 00` – unknown always 0xa
- * `f0 ff 05 00` – offset for sequence 0x5fff0
- * `0c 00 00 00` – length of sequence 12
- * `44 73 31 2e 30 37 2e 30 30 52 30 30 06` – "Ds1.07.00R00"
-
 ## Section 4
 ```
-[023df] OUT: ab ab 00 35 00 00 00 40 00 00 00 61 00 00 20 00
-             00 00 20 00 00 00 00 00 00 00 00 00 00 00 00 0f
-             05 00 00 00 68 fa 68 fa 00 00 00 00 00 00 20 00
-             0a 00 00 00 00 00 00 00 00 00 00 00 18
+[023df] OUT: ab ab 00 35 00 00 00 40
+             00 00 00 61
+             00 00 20 00
+             00 00 20 00
+             00 00 00 00
+             00 00 00 00
+             00 00 00 0f
+             05 00 00 00
+             68 fa 68 fa
+             00 00 00 00
+             00 00 20 00
+             0a 00 00 00
+             00 00 00 00
+             00 00 00 00
+             18
 [023e1]  IN: ab ab 00 02 00 00 00 41 01 44
 [023e3] OUT: ab ab 00 01 00 00 00 42 43
 [023f5]  IN: ab ab 00 01 00 00 00 11 12  [BUSY]
@@ -271,10 +275,21 @@ Then come the data command verbs `43`, with 0x400 byte payload each. Two nouns c
 
 ## Font data section
 ```
-[034df] OUT: ab ab 00 39 00 00 00 40 00 00 50 61 00 80 0b 00
-             00 00 0c 00 00 00 00 00 00 00 00 00 00 00 00 0f
-             02 00 00 00 62 af 62 af 00 00 00 00 00 00 0c 00
-             0a 00 00 00 10 00 00 00 04 00 00 00 31 2e 30 30  ["1.00"]
+[034df] OUT: ab ab 00 39 00 00 00 40
+             00 00 50 61 – address 0x01500000 + 0x60000000
+             00 80 0b 00 – write size 0xb8000
+             00 00 0c 00 – data size 0xc0000
+             00 00 00 00 – unknown always 0
+             00 00 00 00 – unknown always 0
+             00 00 00 0f – unknown always 0xf000000
+             02 00 00 00 – unknown
+             62 af 62 af – unknown
+             00 00 00 00 – unknown always 0
+             00 00 0c 00 – section length 0xc0000
+             0a 00 00 00 – unknown always 0xa
+             10 00 00 00 – sequence offset in section 0x10
+             04 00 00 00 – sequence length 4
+             31 2e 30 30 – sequence for comparison "1.00"
              dd
 [034e3]  IN: ab ab 00 02 00 00 00 41 00 43
 [034e5] OUT: ab ab 00 01 00 00 00 42 43
@@ -294,74 +309,52 @@ Then come the data command verbs `43`, with 0x400 byte payload each. Two nouns c
 [03b0b]  IN: ab ab 00 02 00 00 00 46 00 48
 ```
 
- * `00 00 50 61` – address 0x01500000 + 0x60000000
- * `00 80 0b 00` – write size 0xb8000
- * `00 00 0c 00` – data size 0xc0000
- * `00 00 00 00` – unknown alsways 0
- * `00 00 00 00` – unknown always 0
- * `00 00 00 0f` – unknown always 0xf000000
- * `02 00 00 00` – unknown
- * `62 af 62 af` – unknown
- * `00 00 00 00` – unknown always 0
- * `00 00 0c 00` – section length 0xc0000
- * `0a 00 00 00` – unknown always 0xa
- * `10 00 00 00` – sequence offset in section 0x10
- * `04 00 00 00` – sequence length 4
- * `31 2e 30 30 dd` – sequence for comparison "1.00"
-
 ## Flash finished
 
 The final packets in the protocol wrap up the flashing process:
 ```
-[03b0d] OUT: ab ab 00 35 00 00 00 40 62 00 20 60 02 00 00 00
-             00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 0f
-             00 00 00 00 ce 36 ce 36 00 00 00 00 00 00 00 00
-             0a 00 00 00 00 00 00 00 00 00 00 00 7a
+[03b0d] OUT: ab ab 00 35 00 00 00 40
+             62 00 20 60
+             02 00 00 00
+             00 00 00 00
+             00 00 00 00
+             00 00 00 00
+             00 00 00 0f
+             00 00 00 00
+             ce 36 ce 36
+             00 00 00 00
+             00 00 00 00
+             0a 00 00 00
+             00 00 00 00
+             00 00 00 00
+             7a
 [03b0f]  IN: ab ab 00 02 00 00 00 41 01 44
-[03b33] OUT: ab ab 00 0b 00 00 00 43 00 00 00 00 02 00 00 00
+[03b33] OUT: ab ab 00 0b 00 00 00 43
+             00 00 00 00
+             02 00 00 00
              cd b6 d3
-[03b6f] OUT: ab ab 00 35 00 00 00 40 40 00 20 60 20 00 00 00
-             00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 0f
-             00 00 00 00 a8 c7 a8 c7 00 00 00 00 00 00 00 00
-             0a 00 00 00 00 00 00 00 00 00 00 00 4c
+[03b6f] OUT: ab ab 00 35 00 00 00 40
+             40 00 20 60
+             20 00 00 00
+             00 00 00 00
+             00 00 00 00
+             00 00 00 00
+             00 00 00 0f
+             00 00 00 00
+             a8 c7 a8 c7
+             00 00 00 00
+             00 00 00 00
+             0a 00 00 00
+             00 00 00 00
+             00 00 00 00
+             4c
 [03b71]  IN: ab ab 00 02 00 00 00 41 01 44
-[03b8b] OUT: ab ab 00 29 00 00 00 43 00 00 00 00 20 00 00 00
+[03b8b] OUT: ab ab 00 29 00 00 00 43
+             00 00 00 00
+             20 00 00 00
              5a 5a 7a 6f 2e 2e 28 2d 5f 2d 20 29 20 45 58 2d  ["ZZzo..(-_- ) EX-4420 2013-04-01\x00"]
              34 34 32 30 20 32 30 31 33 2d 30 34 2d 30 31 00
              68
 [03bb3] OUT: ab ab 00 03 00 00 00 50 cd b6 d6
 [03bb5]  IN: ab ab 00 01 00 00 00 06 07  [OK]
 ```
-
- * `62 00 20 60`
- * `02 00 00 00`
- * `00 00 00 00`
- * `00 00 00 00`
- * `00 00 00 00`
- * `00 00 00 0f`
- * `00 00 00 00`
- * `ce 36 ce 36`
- * `00 00 00 00`
- * `00 00 00 00`
- * `0a 00 00 00`
- * `00 00 00 00`
- * `00 00 00 00`
-
- * `40 00 20 60`
- * `20 00 00 00`
- * `00 00 00 00`
- * `00 00 00 00`
- * `00 00 00 00`
- * `00 00 00 0f`
- * `00 00 00 00`
- * `a8 c7 a8 c7`
- * `00 00 00 00`
- * `00 00 00 00`
- * `0a 00 00 00`
- * `00 00 00 00`
- * `00 00 00 00`
-
- * `00 00 00 00`
- * `20 00 00 00`
- * `5a 5a 7a 6f 2e 2e 28 2d 5f 2d 20 29 20 45 58 2d`
- * `34 34 32 30 20 32 30 31 33 2d 30 34 2d 30 31 00` – "ZZzo..(-_- ) EX-4420 2013-04-01\x00"
