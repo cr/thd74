@@ -3,7 +3,7 @@
 from setuptools import setup, find_packages
 
 PACKAGE_NAME = 'thd74tool'
-PACKAGE_VERSION = '0.0.1a1'
+PACKAGE_VERSION = '0.0.1a2'
 
 INSTALL_REQUIRES = [
     'coloredlogs',
