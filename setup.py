@@ -7,7 +7,8 @@ PACKAGE_VERSION = '0.0.1a1'
 
 INSTALL_REQUIRES = [
     'coloredlogs',
-    'pyserial'
+    'pyserial',
+    'setuptools'
 ]
 
 TESTS_REQUIRE = [
