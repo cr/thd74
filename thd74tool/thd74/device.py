@@ -64,7 +64,7 @@ def enumerate_model(thd_device) -> list:
 
 class THD74(object):
     """
-    Device object for Standard Horizon HX870 maritime radios
+    Device object for Kenwood TH-D74 handheld amateur radios
     """
     handle = "THD74"
     brand = "Kenwood"
@@ -106,7 +106,7 @@ class THD74(object):
                 logger.warning(f"Device on {self.tty} is {self.handle} reports both PCRIG and FWPROG mode")
                 logger.critical("This should never happen. Please file an issue on GitHub.")
         else:
-            logger.error(f"Device on {self.tty} does not behave like HX hardware")
+            logger.error(f"Device on {self.tty} does not behave like TH hardware")
 
     @property
     def is_fwprog_mode(self) -> bool:
