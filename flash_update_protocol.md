@@ -13,11 +13,13 @@ Kenwood's updater software uses *encrypted firmware programming mode* by default
 
 When dumping data from a USB update capture, the *xor* byte can be trivially derived from looking at the first two bytes of each message: You will find two identical bytes there, but we already know that their cleartext is `0xab 0xab`, so just *xor* the first byte with *0xab* and *xor* the result with the rest to get the cleartext message.
 
-The *xor* byte is negotiated in the initial magic sequence, but the exact mechnanism is not fully understood at the moment. However, we already know that last two bytes of the magic sequence and the *xor* key are interrelated. If *y* and *z* are the last two bytes of the magic sequence, then the *xor* key *k* can be calculated as
+The *xor* byte is negotiated in the initial magic sequence, but the exact mechnanism is not fully understood at the moment. However, we already know that the last two bytes of the magic sequence and the *xor* key are interrelated. If *y* and *z* are the last two bytes of the magic sequence, then the *xor* key *k* can be calculated as
 
 ```python
 k = (((y + z + 72) & 120) - ((y + z) & 7)) % 128
 ```
+
+unless *k* is zero, in which case `0x74` is used instead to prevent cleartext transmission.
 
 Here are a few sample magic sequences for unlocking encrypted firmware programming mode:
 
@@ -64,6 +66,8 @@ This mode is equivalent to *encrypted firmware programming mode* with *xor* byte
 
 The initial cmd length field is the number of bytes in the nouns plus one byte for the checksum. The overall message length is `<cmd length> + <payload length> + 8`.
 
+The two length words and the verb in the header are big endian, nouns of the more complex commands are typically 4-byte little endian.
+
 The checksum is the sum reduce over all preceeding bytes in the message apart from the attention bytes `ab ab`.
 
 ### Observed command verbs
@@ -75,12 +79,12 @@ The checksum is the sum reduce over all preceeding bytes in the message apart fr
  * [IN] `0x32`
  * [OUT] `0x33`
 
- * [OUT] `0x40` – Section setup
- * [IN] `0x41` – Answer to section setup
+ * [OUT] `0x40` – Segment setup
+ * [IN] `0x41` – Answer to segment setup
  * [OUT] `0x42` – Command before data transfer
- * [OUT] `0x43` [4 byte offset] [2 byte payload length] [00 00] [payload] [cs] – Data packet
- * [OUT] `0x45` – Section end
- * [IN] `0x46` – Answer to section end
+ * [OUT] `0x43` [4 byte offset] [4 byte payload length] [payload] [cs] – Data packet
+ * [OUT] `0x45` – Segment done
+ * [IN] `0x46` – Answer to segment done
 
  * [OUT] `0x50` – Last command, radio displays "Completed!!" and becomes unresponsive
 
@@ -97,27 +101,27 @@ The checksum is the sum reduce over all preceeding bytes in the message apart fr
 [00275]  IN: ab ab 00 01 00 00 00 06 07  [OK]
 ```
 
-## Firmware section
+## Firmware segment
 
-The section header carries memory address and a byte sequence to check for in memory at an offset:
+The segment header carries memory address and a byte sequence to check for in memory at an offset:
 ```
 [00277] OUT: ab ab 00 44 00 00 00 40
              00 00 20 60 – memory address 0x200000 + 0x60000000
-             00 00 28 00 – section length to write 0x280000
-             00 00 28 00 – section length to receive 0x280000
-             00 00 00 00 – unknown always 0
-             00 00 00 00 – unknown always 0
-             00 00 00 0f – unknown always 0x0f000000
-             06 00 00 00 – unknown
-             ab 66 03 1f – unknown
-             00 00 00 00 – unknown always 0
-             00 00 28 00 – section length 0x280000
-             0a 00 00 00 – unknown always 0x0a
-             a0 00 00 00 – sequence offset in section 0xa0
-             0f 00 00 00 – length of sequence
-             56 31 2e 31 30 2e 30 30 30 20 20 20 20 20 20 – sequence to compare "V1.10.000      "
+             00 00 28 00 – segment transfer size 0x280000
+             00 00 28 00 – segment write/clear size (>= transfer size) 0x280000
+             00 00 00 00 – always 0
+             00 00 00 00 – always 0
+             00 00 00 0f – always 0x0f000000
+             06 00 00 00 – possibly unique segment ID 6
+             ab 66 03 1f – dependent on segment data content, possibly checksum or signature
+             00 00 00 00 – always 0
+             00 00 28 00 – segment write/clear size again 0x280000
+             0a 00 00 00 – always 0x0a
+             a0 00 00 00 – version string offset in segment 0xa0
+             0f 00 00 00 – version string length
+             56 31 2e 31 30 2e 30 30 30 20 20 20 20 20 20 – version string to flash "V1.10.000      "
              11
-[0027b]  IN: ab ab 00 02 00 00 00 41 01 44
+[0027b]  IN: ab ab 00 02 00 00 00 41 01 44 – 01 means: version mismatch, update required
 [0027d] OUT: ab ab 00 01 00 00 00 42 43
 [00291]  IN: ab ab 00 01 00 00 00 11 12  [BUSY]
 [002a3]  IN: ab ab 00 01 00 00 00 11 12  [BUSY]
@@ -141,7 +145,7 @@ Then come the data command verbs `43`, with 0x400 byte payload each. Two nouns c
              00 00 00 00 00 00 00 00 00 00 00 00 52 58 00 00
              76
 [002ed] OUT: ab ab 00 09 04 00 00 43
-             00 04 00 00 – offset in section 0x400
+             00 04 00 00 – offset in segment 0x400
              00 04 00 00 – data packet size 0x400
              00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00
              8e f3 90 4d 00 00 00 00 00 00 00 00 00 00 00 00
@@ -163,25 +167,25 @@ Then come the data command verbs `43`, with 0x400 byte payload each. Two nouns c
 [017d3]  IN: ab ab 00 02 00 00 00 46 00 48
 ```
 
-## Section 2
+## Segment 2
 ```
 [017d5] OUT: ab ab 00 3f 00 00 00 40
              00 00 60 60 – memory address 0x600000 + 0x60000000
-             00 80 05 00 – section length to write 0x58000
-             00 00 06 00 – section length to receive 0x60000
-             00 00 00 00 – unknown always 0
-             00 00 00 00 – unknown always 0
-             00 00 00 0f – unknown always 0x0f000000
-             01 00 00 00 – unknown
-             c4 0f c4 0f – unknown
-             00 00 00 00 – unknown always 0
-             00 00 06 00 – section length 0x60000
-             0a 00 00 00 – unknown always 0x0a
-             00 00 00 00 – sequence offset in section 0
-             0a 00 00 00 – sequence length 10
-             31 2e 30 30 2e 30 31 2e 30 30 – sequence to compare "1.00.01.00"
+             00 80 05 00 – segment transfer size 0x58000
+             00 00 06 00 – segment write/clear size 0x60000
+             00 00 00 00 – always 0
+             00 00 00 00 – always 0
+             00 00 00 0f – always 0x0f000000
+             01 00 00 00 – possibly unique segment ID 1
+             c4 0f c4 0f – possibly data checksum
+             00 00 00 00 – always 0
+             00 00 06 00 – segment write/clear size again 0x60000
+             0a 00 00 00 – always 0x0a
+             00 00 00 00 – version string offset in segment 0
+             0a 00 00 00 – version string length 10
+             31 2e 30 30 2e 30 31 2e 30 30 – version string to flash "1.00.01.00"
              76
-[017d7]  IN: ab ab 00 02 00 00 00 41 00 43
+[017d7]  IN: ab ab 00 02 00 00 00 41 00 43 – 00 means: version match, no update required (ignored)
 [017d9] OUT: ab ab 00 01 00 00 00 42 43
 [017e3]  IN: ab ab 00 01 00 00 00 06 07  [OK]
 [01801] OUT: ab ab 00 09 04 00 00 43 00 00 00 00 00 04 00 00
@@ -198,25 +202,25 @@ Then come the data command verbs `43`, with 0x400 byte payload each. Two nouns c
 [01b19]  IN: ab ab 00 02 00 00 00 46 00 48
 ```
 
-## Section 3
+## Segment 3
 ```
 [01b1b] OUT: ab ab 00 41 00 00 00 40
-             00 00 e0 60 – section address 0xe00000 + 0x60000000
-             00 00 10 00 – section length in memory 0x100000
-             00 00 10 00 – section length to receive 0x100000
-             00 00 00 00 – unknown always 0
-             00 00 00 00 – unknown always 0
-             00 00 00 0f – unknown always 0x0f000000
-             03 00 00 00 – unknown
-             5e 40 5e 40 – unknown
-             00 00 00 00 – unknown always 0
-             00 00 10 00 – section length 0x100000
-             0a 00 00 00 – unknown always 0xa
-             f0 ff 05 00 – offset for sequence 0x5fff0
-             0c 00 00 00 – length of sequence 12
+             00 00 e0 60 – segment address 0xe00000 + 0x60000000
+             00 00 10 00 – segment transfer size 0x100000
+             00 00 10 00 – segment write/erase size 0x100000
+             00 00 00 00 – always 0
+             00 00 00 00 – always 0
+             00 00 00 0f – always 0x0f000000
+             03 00 00 00 – possibly unique segment ID 3
+             5e 40 5e 40 – possibly data checksum
+             00 00 00 00 – always 0
+             00 00 10 00 – segment write/erase size again 0x100000
+             0a 00 00 00 – always 0xa
+             f0 ff 05 00 – version string offset in segment 0x5fff0
+             0c 00 00 00 – version string length 12
              44 73 31 2e 30 37 2e 30 30 52 30 30 – "Ds1.07.00R00"
              06
-[01b23]  IN: ab ab 00 02 00 00 00 41 00 43
+[01b23]  IN: ab ab 00 02 00 00 00 41 00 43 – 00: version match, no update required (ignored)
 [01b25] OUT: ab ab 00 01 00 00 00 42 43
 [01b3f]  IN: ab ab 00 01 00 00 00 11 12  [BUSY]
 [01b53]  IN: ab ab 00 01 00 00 00 11 12  [BUSY]
@@ -235,24 +239,24 @@ Then come the data command verbs `43`, with 0x400 byte payload each. Two nouns c
 [023dd]  IN: ab ab 00 02 00 00 00 46 00 48
 ```
 
-## Section 4
+## Segment 4
 ```
 [023df] OUT: ab ab 00 35 00 00 00 40
-             00 00 00 61
-             00 00 20 00
-             00 00 20 00
-             00 00 00 00
-             00 00 00 00
-             00 00 00 0f
-             05 00 00 00
-             68 fa 68 fa
-             00 00 00 00
-             00 00 20 00
-             0a 00 00 00
-             00 00 00 00
-             00 00 00 00
+             00 00 00 61 – segment address 0x1000000 + 0x60000000
+             00 00 20 00 – segment transfer size 0x200000
+             00 00 20 00 – segment write/erase size 0x200000
+             00 00 00 00 – always 0
+             00 00 00 00 – always 0
+             00 00 00 0f – always 0x0f000000
+             05 00 00 00 – possibly unique segment ID 5
+             68 fa 68 fa – possibly data checksum
+             00 00 00 00 – always 0
+             00 00 20 00 – segment write/erase size again 0x200000
+             0a 00 00 00 – always 0xa
+             00 00 00 00 – version string offset in segment 0
+             00 00 00 00 – version string length 0 (no check, always mismatch)
              18
-[023e1]  IN: ab ab 00 02 00 00 00 41 01 44
+[023e1]  IN: ab ab 00 02 00 00 00 41 01 44 – 01: version mismatch, update required
 [023e3] OUT: ab ab 00 01 00 00 00 42 43
 [023f5]  IN: ab ab 00 01 00 00 00 11 12  [BUSY]
 [0240b]  IN: ab ab 00 01 00 00 00 11 12  [BUSY]
@@ -273,23 +277,23 @@ Then come the data command verbs `43`, with 0x400 byte payload each. Two nouns c
 [034dd]  IN: ab ab 00 02 00 00 00 46 00 48
 ```
 
-## Font data section
+## Font data segment
 ```
 [034df] OUT: ab ab 00 39 00 00 00 40
-             00 00 50 61 – address 0x01500000 + 0x60000000
-             00 80 0b 00 – write size 0xb8000
-             00 00 0c 00 – data size 0xc0000
-             00 00 00 00 – unknown always 0
-             00 00 00 00 – unknown always 0
-             00 00 00 0f – unknown always 0xf000000
-             02 00 00 00 – unknown
-             62 af 62 af – unknown
-             00 00 00 00 – unknown always 0
-             00 00 0c 00 – section length 0xc0000
-             0a 00 00 00 – unknown always 0xa
-             10 00 00 00 – sequence offset in section 0x10
-             04 00 00 00 – sequence length 4
-             31 2e 30 30 – sequence for comparison "1.00"
+             00 00 50 61 – segment address 0x01500000 + 0x60000000
+             00 80 0b 00 – segment transfer size 0xb8000
+             00 00 0c 00 – segment write/erase size 0xc0000
+             00 00 00 00 – always 0
+             00 00 00 00 – always 0
+             00 00 00 0f – always 0xf000000
+             02 00 00 00 – possibly segment ID 2
+             62 af 62 af – possibly data checksum
+             00 00 00 00 – always 0
+             00 00 0c 00 – segment write/erase size again 0xc0000
+             0a 00 00 00 – always 0xa
+             10 00 00 00 – version string offset in segment 0x10
+             04 00 00 00 – version string length 4
+             31 2e 30 30 – "1.00"
              dd
 [034e3]  IN: ab ab 00 02 00 00 00 41 00 43
 [034e5] OUT: ab ab 00 01 00 00 00 42 43
@@ -311,50 +315,50 @@ Then come the data command verbs `43`, with 0x400 byte payload each. Two nouns c
 
 ## Flash finished
 
-The final packets in the protocol wrap up the flashing process:
+The final packets in the protocol wrap up the flashing process by writing two short byte sequences into an ff ff block within the firmware segment:
 ```
 [03b0d] OUT: ab ab 00 35 00 00 00 40
-             62 00 20 60
-             02 00 00 00
-             00 00 00 00
-             00 00 00 00
-             00 00 00 00
-             00 00 00 0f
-             00 00 00 00
-             ce 36 ce 36
-             00 00 00 00
-             00 00 00 00
-             0a 00 00 00
-             00 00 00 00
-             00 00 00 00
+             62 00 20 60 – segment address 0x200062 + 0x60000000
+             02 00 00 00 – segment transfer size 2
+             00 00 00 00 – segment write/erase size 0
+             00 00 00 00 – always 0
+             00 00 00 00 – always 0
+             00 00 00 0f – always 0xf000000
+             00 00 00 00 – possibly segment ID/type 0
+             ce 36 ce 36 – possibly checksum, strongly related to data to be written (cd b6)
+             00 00 00 00 – always 0
+             00 00 00 00 – always 0
+             0a 00 00 00 – always 0xa
+             00 00 00 00 – version string offset 0
+             00 00 00 00 – version string length 0 (no check)
              7a
 [03b0f]  IN: ab ab 00 02 00 00 00 41 01 44
-[03b33] OUT: ab ab 00 0b 00 00 00 43
+[03b33] OUT: ab ab 00 0b 00 00 00 43 – note data is not passed as payload unlike the other 0x43 data packets
              00 00 00 00
              02 00 00 00
              cd b6 d3
 [03b6f] OUT: ab ab 00 35 00 00 00 40
-             40 00 20 60
-             20 00 00 00
-             00 00 00 00
-             00 00 00 00
-             00 00 00 00
-             00 00 00 0f
-             00 00 00 00
-             a8 c7 a8 c7
-             00 00 00 00
-             00 00 00 00
-             0a 00 00 00
-             00 00 00 00
-             00 00 00 00
+             40 00 20 60 – segment address 0x200040 + 0x60000000
+             20 00 00 00 – segment transfer size 32
+             00 00 00 00 – segment write/erase size 0
+             00 00 00 00 – always 0
+             00 00 00 00 – always 0
+             00 00 00 0f – always 0xf000000
+             00 00 00 00 – possibly segment ID/type 0
+             a8 c7 a8 c7 – possibly checksum
+             00 00 00 00 – always 0
+             00 00 00 00 – always 0
+             0a 00 00 00 – always 0xa
+             00 00 00 00 – version string offset 0
+             00 00 00 00 – version string length 0 (no check)
              4c
 [03b71]  IN: ab ab 00 02 00 00 00 41 01 44
-[03b8b] OUT: ab ab 00 29 00 00 00 43
+[03b8b] OUT: ab ab 00 29 00 00 00 43 – note data is not passed as payload
              00 00 00 00
              20 00 00 00
              5a 5a 7a 6f 2e 2e 28 2d 5f 2d 20 29 20 45 58 2d  ["ZZzo..(-_- ) EX-4420 2013-04-01\x00"]
              34 34 32 30 20 32 30 31 33 2d 30 34 2d 30 31 00
              68
-[03bb3] OUT: ab ab 00 03 00 00 00 50 cd b6 d6
+[03bb3] OUT: ab ab 00 03 00 00 00 50 cd b6 d6 – same two bytes as written before (cd b6)
 [03bb5]  IN: ab ab 00 01 00 00 00 06 07  [OK]
 ```

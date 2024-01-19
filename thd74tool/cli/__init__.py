@@ -4,7 +4,8 @@ from .base import run, list_commands
 
 from . import devices
 from . import extract
+from . import pcap
 
 __all__ = [
-    "devices", "extract"
+    "devices", "extract", "pcap"
 ]

@@ -7,7 +7,6 @@ PACKAGE_VERSION = '0.0.1a1'
 
 INSTALL_REQUIRES = [
     'coloredlogs',
-    'ipython',
     'pyserial'
 ]
 
@@ -20,6 +19,7 @@ TESTS_REQUIRE = [
 ]
 
 DEV_REQUIRES = [
+    'ipython',
     'pylint',
     'rope'
 ] + TESTS_REQUIRE
